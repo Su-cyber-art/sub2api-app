@@ -9,12 +9,11 @@ import { formatTokenValue } from '@/src/lib/formatters';
 import { getAdminRequestErrorMessage } from '@/src/lib/admin-error-message';
 import { DonutChartCard } from '@/src/components/donut-chart-card';
 import { LineTrendChart } from '@/src/components/line-trend-chart';
+import { createTrendRange, fillTrendRange, formatTrendLabel, type TrendRangeKey } from '@/src/lib/trend-range';
 import { getAdminSettings, getDashboardModels, getDashboardStats, getDashboardTrend, listAccounts } from '@/src/services/admin';
 import { adminConfigState, hasAuthenticatedAdminSession } from '@/src/store/admin-config';
 
 const { useSnapshot } = require('valtio/react');
-
-type RangeKey = '24h' | '7d' | '30d';
 
 const colors = {
   page: '#f4efe4',
@@ -30,13 +29,13 @@ const colors = {
   success: '#1d5f55',
 };
 
-const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
+const RANGE_OPTIONS: Array<{ key: TrendRangeKey; label: string }> = [
   { key: '24h', label: '24H' },
   { key: '7d', label: '7D' },
   { key: '30d', label: '30D' },
 ];
 
-const RANGE_TITLE_MAP: Record<RangeKey, string> = {
+const RANGE_TITLE_MAP: Record<TrendRangeKey, string> = {
   '24h': '24H',
   '7d': '7D',
   '30d': '30D',
@@ -74,27 +73,6 @@ function hasAccountRateLimited(account: {
   });
 }
 
-function getDateRange(rangeKey: RangeKey) {
-  const end = new Date();
-  const start = new Date();
-
-  if (rangeKey === '24h') {
-    start.setHours(end.getHours() - 23, 0, 0, 0);
-  } else if (rangeKey === '30d') {
-    start.setDate(end.getDate() - 29);
-  } else {
-    start.setDate(end.getDate() - 6);
-  }
-
-  const toDate = (value: Date) => value.toISOString().slice(0, 10);
-
-  return {
-    start_date: toDate(start),
-    end_date: toDate(end),
-    granularity: rangeKey === '24h' ? ('hour' as const) : ('day' as const),
-  };
-}
-
 function formatNumber(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '--';
   return new Intl.NumberFormat('en-US').format(value);
@@ -115,14 +93,6 @@ function formatCompactNumber(value?: number) {
 function formatTokenDisplay(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '--';
   return formatTokenValue(value);
-}
-
-function getPointLabel(value: string, rangeKey: RangeKey) {
-  if (rangeKey === '24h') {
-    return value.slice(11, 13);
-  }
-
-  return value.slice(5, 10);
 }
 
 function getErrorMessage(error: unknown) {
@@ -157,8 +127,8 @@ function StatCard({ title, value, detail }: { title: string; value: string; deta
 export default function MonitorScreen() {
   const config = useSnapshot(adminConfigState);
   const hasAccount = hasAuthenticatedAdminSession(config);
-  const [rangeKey, setRangeKey] = useState<RangeKey>('7d');
-  const range = useMemo(() => getDateRange(rangeKey), [rangeKey]);
+  const [rangeKey, setRangeKey] = useState<TrendRangeKey>('7d');
+  const range = useMemo(() => createTrendRange(rangeKey), [rangeKey]);
 
   const statsQuery = useQuery({
     queryKey: ['monitor-stats'],
@@ -179,15 +149,18 @@ export default function MonitorScreen() {
     staleTime: 60_000,
   });
   const trendQuery = useQuery({
-    queryKey: ['monitor-trend', rangeKey, range.start_date, range.end_date, range.granularity],
-    queryFn: () => getDashboardTrend(range),
+    queryKey: ['monitor-trend', rangeKey, range.query.start_date, range.query.end_date, range.query.granularity, range.query.timezone],
+    queryFn: () => getDashboardTrend(range.query),
     enabled: hasAccount,
     staleTime: 60_000,
-    placeholderData: (previousData) => previousData,
   });
   const modelsQuery = useQuery({
-    queryKey: ['monitor-models', rangeKey, range.start_date, range.end_date],
-    queryFn: () => getDashboardModels(range),
+    queryKey: ['monitor-models', rangeKey, range.query.start_date, range.query.end_date, range.query.timezone],
+    queryFn: () => getDashboardModels({
+      start_date: range.query.start_date,
+      end_date: range.query.end_date,
+      timezone: range.query.timezone,
+    }),
     enabled: hasAccount,
     staleTime: 60_000,
     placeholderData: (previousData) => previousData,
@@ -204,7 +177,10 @@ export default function MonitorScreen() {
   const stats = statsQuery.data;
   const siteName = settingsQuery.data?.site_name?.trim() || '管理控制台';
   const accounts = accountsQuery.data?.items ?? [];
-  const trend = trendQuery.data?.trend ?? [];
+  const trend = useMemo(
+    () => fillTrendRange(trendQuery.data?.trend ?? [], range),
+    [range, trendQuery.data?.trend]
+  );
   const topModels = (modelsQuery.data?.models ?? []).slice(0, 5);
   const errorMessage = getErrorMessage(statsQuery.error ?? settingsQuery.error ?? accountsQuery.error ?? trendQuery.error ?? modelsQuery.error);
   const currentPageErrorAccounts = accounts.filter(hasAccountError).length;
@@ -222,20 +198,21 @@ export default function MonitorScreen() {
   const selectedCostTotal = trend.reduce((sum, item) => sum + item.cost, 0);
   const selectedOutputTotal = trend.reduce((sum, item) => sum + item.output_tokens, 0);
   const rangeTitle = RANGE_TITLE_MAP[rangeKey];
+  const hasTrendData = Boolean(trendQuery.data?.trend?.length);
   const isLoading = statsQuery.isLoading || settingsQuery.isLoading || accountsQuery.isLoading;
   const hasError = Boolean(statsQuery.error || settingsQuery.error || accountsQuery.error || trendQuery.error || modelsQuery.error);
 
   const throughputPoints = useMemo(
-    () => trend.map((item) => ({ label: getPointLabel(item.date, rangeKey), value: item.total_tokens })),
-    [rangeKey, trend]
+    () => trend.map((item) => ({ label: formatTrendLabel(item.date, range.query.granularity), value: item.total_tokens })),
+    [range.query.granularity, trend]
   );
   const requestPoints = useMemo(
-    () => trend.map((item) => ({ label: getPointLabel(item.date, rangeKey), value: item.requests })),
-    [rangeKey, trend]
+    () => trend.map((item) => ({ label: formatTrendLabel(item.date, range.query.granularity), value: item.requests })),
+    [range.query.granularity, trend]
   );
   const costPoints = useMemo(
-    () => trend.map((item) => ({ label: getPointLabel(item.date, rangeKey), value: item.cost })),
-    [rangeKey, trend]
+    () => trend.map((item) => ({ label: formatTrendLabel(item.date, range.query.granularity), value: item.cost })),
+    [range.query.granularity, trend]
   );
   const totalInputTokens = useMemo(() => trend.reduce((sum, item) => sum + item.input_tokens, 0), [trend]);
   const totalOutputTokens = useMemo(() => trend.reduce((sum, item) => sum + item.output_tokens, 0), [trend]);
@@ -270,7 +247,7 @@ export default function MonitorScreen() {
                 );
               })}
             </View>
-            <Text style={{ marginTop: 8, fontSize: 12, color: colors.subtext }}>{range.start_date} 到 {range.end_date}</Text>
+            <Text style={{ marginTop: 8, fontSize: 12, color: colors.subtext }}>{range.query.start_date} 到 {range.query.end_date}</Text>
           </View>
         </View>
 
@@ -348,16 +325,16 @@ export default function MonitorScreen() {
               </Pressable>
             </Section>
 
-            {throughputPoints.length > 1 ? (
-              <LineTrendChart title="Token 吞吐" subtitle="当前时间范围内的 Token 变化趋势" points={throughputPoints} color="#a34d2d" formatValue={formatTokenDisplay} />
+            {hasTrendData && throughputPoints.length > 1 ? (
+              <LineTrendChart title="Token 吞吐" subtitle="当前时间范围内的 Token 变化趋势" points={throughputPoints} color="#a34d2d" formatValue={formatTokenDisplay} latestLabel={rangeKey === '24h' ? '当前小时' : '最新日'} />
             ) : null}
 
-            {requestPoints.length > 1 ? (
-              <LineTrendChart title="请求趋势" subtitle="当前时间范围内的请求变化趋势" points={requestPoints} color="#1d5f55" formatValue={formatCompactNumber} />
+            {hasTrendData && requestPoints.length > 1 ? (
+              <LineTrendChart title="请求趋势" subtitle="当前时间范围内的请求变化趋势" points={requestPoints} color="#1d5f55" formatValue={formatCompactNumber} latestLabel={rangeKey === '24h' ? '当前小时' : '最新日'} />
             ) : null}
 
-            {costPoints.length > 1 ? (
-              <LineTrendChart title="成本趋势" subtitle="当前时间范围内的成本变化趋势" points={costPoints} color="#7651c8" formatValue={formatMoney} />
+            {hasTrendData && costPoints.length > 1 ? (
+              <LineTrendChart title="成本趋势" subtitle="当前时间范围内的成本变化趋势" points={costPoints} color="#7651c8" formatValue={formatMoney} latestLabel={rangeKey === '24h' ? '当前小时' : '最新日'} />
             ) : null}
 
             <BarChartCard

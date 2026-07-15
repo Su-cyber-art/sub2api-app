@@ -86,6 +86,7 @@ export function getDashboardTrend(params: {
   start_date: string;
   end_date: string;
   granularity?: 'day' | 'hour';
+  timezone?: string;
   account_id?: number;
   group_id?: number;
   user_id?: number;
@@ -93,7 +94,7 @@ export function getDashboardTrend(params: {
   return adminFetch<DashboardTrend>(`/api/v1/admin/dashboard/trend${buildQuery(params)}`);
 }
 
-export function getDashboardModels(params: { start_date: string; end_date: string }) {
+export function getDashboardModels(params: { start_date: string; end_date: string; timezone?: string }) {
   return adminFetch<DashboardModelStats>(`/api/v1/admin/dashboard/models${buildQuery(params)}`);
 }
 
@@ -101,6 +102,7 @@ export function getDashboardSnapshot(params: {
   start_date: string;
   end_date: string;
   granularity?: 'day' | 'hour';
+  timezone?: string;
   account_id?: number;
   user_id?: number;
   group_id?: number;
@@ -119,6 +121,7 @@ export function getDashboardSnapshot(params: {
 export function getUsageStats(params: {
   start_date: string;
   end_date: string;
+  timezone?: string;
   user_id?: number;
   account_id?: number;
   group_id?: number;

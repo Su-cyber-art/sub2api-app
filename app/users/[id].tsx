@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LineTrendChart } from '@/src/components/line-trend-chart';
 import { UserLimitsPanel } from '@/src/components/user-limits-panel';
+import { createTrendRange, fillTrendRange, formatTrendLabel, type TrendRangeKey } from '@/src/lib/trend-range';
 import { deleteUser, getDashboardSnapshot, getUsageStats, getUser, listUserApiKeys, updateUserBalance, updateUserStatus } from '@/src/services/admin';
 import type { AdminApiKey, BalanceOperation } from '@/src/types/admin';
 
@@ -23,34 +24,11 @@ const colors = {
   muted: '#f7f1e6',
 };
 
-type RangeKey = '24h' | '7d' | '30d';
-
-const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
+const RANGE_OPTIONS: Array<{ key: TrendRangeKey; label: string }> = [
   { key: '24h', label: '24H' },
   { key: '7d', label: '7D' },
   { key: '30d', label: '30D' },
 ];
-
-function getDateRange(rangeKey: RangeKey) {
-  const end = new Date();
-  const start = new Date();
-
-  if (rangeKey === '24h') {
-    start.setHours(end.getHours() - 23, 0, 0, 0);
-  } else if (rangeKey === '30d') {
-    start.setDate(end.getDate() - 29);
-  } else {
-    start.setDate(end.getDate() - 6);
-  }
-
-  const toDate = (value: Date) => value.toISOString().slice(0, 10);
-
-  return {
-    start_date: toDate(start),
-    end_date: toDate(end),
-    granularity: rangeKey === '24h' ? ('hour' as const) : ('day' as const),
-  };
-}
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
@@ -261,8 +239,8 @@ export default function UserDetailScreen() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
-  const [rangeKey, setRangeKey] = useState<RangeKey>('7d');
-  const range = getDateRange(rangeKey);
+  const [rangeKey, setRangeKey] = useState<TrendRangeKey>('7d');
+  const range = useMemo(() => createTrendRange(rangeKey), [rangeKey]);
 
   const userQuery = useQuery({
     queryKey: ['user', userId],
@@ -277,16 +255,16 @@ export default function UserDetailScreen() {
   });
 
   const usageStatsQuery = useQuery({
-    queryKey: ['usage-stats', 'user', userId, rangeKey, range.start_date, range.end_date],
-    queryFn: () => getUsageStats({ ...range, user_id: userId }),
+    queryKey: ['usage-stats', 'user', userId, rangeKey, range.query.start_date, range.query.end_date, range.query.timezone],
+    queryFn: () => getUsageStats({ ...range.query, user_id: userId }),
     enabled: Number.isFinite(userId),
   });
 
   const usageSnapshotQuery = useQuery({
-    queryKey: ['usage-snapshot', 'user', userId, rangeKey, range.start_date, range.end_date, range.granularity],
+    queryKey: ['usage-snapshot', 'user', userId, rangeKey, range.query.start_date, range.query.end_date, range.query.granularity, range.query.timezone],
     queryFn: () =>
       getDashboardSnapshot({
-        ...range,
+        ...range.query,
         user_id: userId,
         include_stats: false,
         include_trend: true,
@@ -348,10 +326,17 @@ export default function UserDetailScreen() {
       return keyword ? haystack.includes(keyword) : true;
     });
   }, [apiKeys, searchText]);
-  const trendPoints = (usageSnapshotQuery.data?.trend ?? []).map((item) => ({
-    label: rangeKey === '24h' ? item.date.slice(11, 13) : item.date.slice(5, 10),
-    value: item.total_tokens,
-  }));
+  const normalizedTrend = useMemo(
+    () => fillTrendRange(usageSnapshotQuery.data?.trend ?? [], range),
+    [range, usageSnapshotQuery.data?.trend]
+  );
+  const trendPoints = useMemo(
+    () => normalizedTrend.map((item) => ({
+      label: formatTrendLabel(item.date, range.query.granularity),
+      value: item.total_tokens,
+    })),
+    [normalizedTrend, range.query.granularity]
+  );
 
   function submitBalance() {
     const numericAmount = Number(amount);
@@ -532,15 +517,16 @@ export default function UserDetailScreen() {
               </View>
             ) : null}
 
-            {!usageSnapshotQuery.isLoading && trendPoints.length > 1 ? (
+            {!usageSnapshotQuery.isLoading && Boolean(usageSnapshotQuery.data?.trend?.length) && trendPoints.length > 1 ? (
               <View style={{ marginTop: 14 }}>
                 <LineTrendChart
                   title="用量趋势"
-                  subtitle={`${range.start_date} 到 ${range.end_date}`}
+                  subtitle={`${range.query.start_date} 到 ${range.query.end_date}`}
                   points={trendPoints}
                   color="#1d5f55"
                   formatValue={(value) => formatTokenValue(value)}
                   compact
+                  latestLabel={rangeKey === '24h' ? '当前小时' : '最新日'}
                 />
               </View>
             ) : null}
