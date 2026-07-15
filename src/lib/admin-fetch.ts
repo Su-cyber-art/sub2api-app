@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import { adminConfigState } from '@/src/store/admin-config';
+import { requireAdminCompliance } from '@/src/store/admin-compliance';
 import type { ApiEnvelope } from '@/src/types/admin';
 
 const UPSTREAM_BASE_URL_HEADER = 'x-sub2api-base-url';
@@ -164,11 +165,17 @@ export async function adminFetch<T>(
       || getResponseMessage(json.message)
       || getResponseMessage(json.detail)
       || (json.code !== undefined ? String(json.code) : 'REQUEST_FAILED');
+    const metadata = isRecord(json.metadata) ? json.metadata : undefined;
+
+    if (response.status === 423 && json.code === 'ADMIN_COMPLIANCE_ACK_REQUIRED') {
+      requireAdminCompliance(baseUrl, metadata);
+    }
+
     throw new AdminApiError(message, {
       status: response.status,
       code: json.code,
       reason,
-      metadata: isRecord(json.metadata) ? json.metadata : undefined,
+      metadata,
     });
   }
 

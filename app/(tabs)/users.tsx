@@ -1,15 +1,15 @@
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
+import { ChevronDown } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useDebouncedValue } from '@/src/hooks/use-debounced-value';
-import { formatCompactNumber, formatTokenValue } from '@/src/lib/formatters';
 import { queryClient } from '@/src/lib/query-client';
-import { getUser, getUsageStats, listUserApiKeys, listUsers } from '@/src/services/admin';
+import { getBatchUsersUsage, getUser, listUserApiKeys, listUsers } from '@/src/services/admin';
 import { adminConfigState, hasAuthenticatedAdminSession } from '@/src/store/admin-config';
-import type { AdminUser, UsageStats } from '@/src/types/admin';
+import type { AdminUser, BatchUserUsageStats } from '@/src/types/admin';
 
 const { useSnapshot } = require('valtio/react');
 
@@ -27,28 +27,6 @@ const colors = {
 };
 
 type SortOrder = 'desc' | 'asc';
-type RangeKey = '24h' | '7d' | '30d';
-
-function getDateRange(rangeKey: RangeKey) {
-  const end = new Date();
-  const start = new Date();
-
-  if (rangeKey === '24h') {
-    start.setHours(end.getHours() - 23, 0, 0, 0);
-  } else if (rangeKey === '30d') {
-    start.setDate(end.getDate() - 29);
-  } else {
-    start.setDate(end.getDate() - 6);
-  }
-
-  const toDate = (value: Date) => value.toISOString().slice(0, 10);
-
-  return {
-    start_date: toDate(start),
-    end_date: toDate(end),
-    granularity: rangeKey === '24h' ? ('hour' ) : ('day' ),
-  };
-}
 
 function formatCost(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '$0.00';
@@ -115,13 +93,13 @@ function MetricTile({ title, value, tone = 'default' }: { title: string; value: 
   );
 }
 
-function UserCard({ user, usage }: { user: AdminUser; usage?: UsageStats }) {
+function UserCard({ user, usage }: { user: AdminUser; usage?: BatchUserUsageStats }) {
   const isAdmin = user.role?.trim().toLowerCase() === 'admin';
   const userNameLabel = getUserNameLabel(user);
   const statusLabel = `${isAdmin ? 'admin · ' : ''}${user.status || 'active'} · ${userNameLabel}`;
-  const totalCost = Number(usage?.total_account_cost ?? usage?.total_actual_cost ?? usage?.total_cost ?? 0);
-  const totalTokens = Number(usage?.total_tokens ?? 0);
-  const totalRequests = Number(usage?.total_requests ?? 0);
+  const totalCost = Number(usage?.total_actual_cost ?? 0);
+  const todayCost = Number(usage?.today_actual_cost ?? 0);
+  const balance = Number(user.balance ?? 0);
 
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 14 }}>
@@ -136,9 +114,9 @@ function UserCard({ user, usage }: { user: AdminUser; usage?: UsageStats }) {
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-        <MetricTile title="消费" value={formatCost(totalCost)} tone="accent" />
-        <MetricTile title="总 Token" value={formatTokenValue(totalTokens)} />
-        <MetricTile title="总请求" value={formatCompactNumber(totalRequests)} />
+        <MetricTile title="总消费" value={formatCost(totalCost)} tone="accent" />
+        <MetricTile title="今日消费" value={formatCost(todayCost)} />
+        <MetricTile title="余额" value={formatCost(balance)} />
       </View>
     </View>
   );
@@ -150,37 +128,39 @@ export default function UsersScreen() {
   const [searchText, setSearchText] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const debouncedSearchText = useDebouncedValue(searchText, 250);
+  const serverScope = `${config.baseUrl}|${config.activeAccountId}`;
 
-  const usersQuery = useQuery({
-    queryKey: ['users', debouncedSearchText],
-    queryFn: () => listUsers(debouncedSearchText),
+  const usersQuery = useInfiniteQuery({
+    queryKey: ['users', serverScope, debouncedSearchText],
+    queryFn: ({ pageParam }) => listUsers(debouncedSearchText, pageParam, 20),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.page < lastPage.pages ? lastPage.page + 1 : undefined,
     enabled: hasAccount,
   });
 
-  const usageRange = useMemo(() => getDateRange('7d'), []);
-
   const users = useMemo(() => {
-    const items = [...(usersQuery.data?.items ?? [])];
+    const items = [...(usersQuery.data?.pages.flatMap((page) => page.items) ?? [])];
     items.sort((left, right) => {
       const value = getTimeValue(left) - getTimeValue(right);
       return sortOrder === 'desc' ? -value : value;
     });
     return items;
-  }, [sortOrder, usersQuery.data?.items]);
+  }, [sortOrder, usersQuery.data]);
 
-  const usageQueries = useQueries({
-    queries: users.map((user) => ({
-      queryKey: ['usage-stats', 'user', user.id, '7d', usageRange.start_date, usageRange.end_date],
-      queryFn: () => getUsageStats({ ...usageRange, user_id: user.id }),
-      enabled: hasAccount,
-      staleTime: 60_000,
-    })),
+  const userIds = useMemo(() => users.map((user) => user.id), [users]);
+  const usageQuery = useQuery({
+    queryKey: ['batch-users-usage', serverScope, userIds],
+    queryFn: () => getBatchUsersUsage(userIds),
+    enabled: hasAccount && userIds.length > 0,
+    staleTime: 60_000,
+    retry: false,
   });
 
-  const usageByUserId = useMemo(
-    () => new Map(users.map((user, index) => [user.id, usageQueries[index]?.data] as const)),
-    [users, usageQueries]
-  );
+  const usageByUserId = useMemo(() => new Map(
+    Object.entries(usageQuery.data?.stats ?? {}).map(([userId, usage]) => [Number(userId), usage] as const)
+  ), [usageQuery.data?.stats]);
+
+  const totalUsers = usersQuery.data?.pages[0]?.total ?? users.length;
 
   const errorMessage = getErrorMessage(usersQuery.error);
 
@@ -190,7 +170,7 @@ export default function UsersScreen() {
         <View style={{ marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text }}>用户</Text>
-            <Text style={{ marginTop: 4, fontSize: 12, color: '#8a8072' }}>查看用户列表并进入详情页管理账号。</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: '#8a8072' }}>已加载 {users.length} / {totalUsers}，点击用户进入详情。</Text>
           </View>
           <Pressable
             onPress={() => router.push('/users/create-user')}
@@ -255,7 +235,15 @@ export default function UsersScreen() {
             data={users}
             keyExtractor={(item) => `${item.id}`}
             showsVerticalScrollIndicator={false}
-            refreshControl={<RefreshControl refreshing={usersQuery.isRefetching} onRefresh={() => void usersQuery.refetch()} tintColor="#1d5f55" />}
+            refreshControl={<RefreshControl
+              refreshing={usersQuery.isRefetching && !usersQuery.isFetchingNextPage}
+              onRefresh={() => {
+                const requests: Promise<unknown>[] = [usersQuery.refetch()];
+                if (userIds.length > 0) requests.push(usageQuery.refetch());
+                void Promise.all(requests);
+              }}
+              tintColor="#1d5f55"
+            />}
             contentContainerStyle={{ paddingBottom: 8, gap: 12, flexGrow: users.length === 0 ? 1 : 0 }}
             ListEmptyComponent={
               <View style={{ backgroundColor: colors.card, borderRadius: 18, padding: 16 }}>
@@ -263,6 +251,16 @@ export default function UsersScreen() {
                 <Text style={{ marginTop: 8, fontSize: 14, lineHeight: 22, color: colors.subtext }}>当前搜索条件下没有匹配结果，可以修改关键词后重试。</Text>
               </View>
             }
+            ListFooterComponent={usersQuery.hasNextPage ? (
+              <Pressable
+                disabled={usersQuery.isFetchingNextPage}
+                onPress={() => void usersQuery.fetchNextPage()}
+                style={{ height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+              >
+                {usersQuery.isFetchingNextPage ? <ActivityIndicator color={colors.primary} size="small" /> : <ChevronDown color={colors.primary} size={17} />}
+                <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800' }}>{usersQuery.isFetchingNextPage ? '加载中' : '加载更多用户'}</Text>
+              </Pressable>
+            ) : null}
             renderItem={({ item }) => (
               <Pressable
                 onPress={() => {

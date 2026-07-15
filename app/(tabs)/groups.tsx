@@ -1,23 +1,31 @@
-import { useQuery } from '@tanstack/react-query';
-import { FolderKanban, Layers3, Search } from 'lucide-react-native';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { ChevronDown, FolderKanban, Layers3, Search } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
 
 import { ListCard } from '@/src/components/list-card';
 import { ScreenShell } from '@/src/components/screen-shell';
 import { useDebouncedValue } from '@/src/hooks/use-debounced-value';
 import { listGroups } from '@/src/services/admin';
+import { adminConfigState } from '@/src/store/admin-config';
+
+const { useSnapshot } = require('valtio/react');
 
 export default function GroupsScreen() {
+  const config = useSnapshot(adminConfigState);
   const [searchText, setSearchText] = useState('');
   const keyword = useDebouncedValue(searchText.trim(), 300);
+  const serverScope = `${config.baseUrl}|${config.activeAccountId}`;
 
-  const groupsQuery = useQuery({
-    queryKey: ['groups', keyword],
-    queryFn: () => listGroups(keyword),
+  const groupsQuery = useInfiniteQuery({
+    queryKey: ['groups', serverScope, keyword],
+    queryFn: ({ pageParam }) => listGroups(keyword, pageParam, 20),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.page < lastPage.pages ? lastPage.page + 1 : undefined,
   });
 
-  const items = groupsQuery.data?.items ?? [];
+  const items = useMemo(() => groupsQuery.data?.pages.flatMap((page) => page.items) ?? [], [groupsQuery.data]);
+  const totalGroups = groupsQuery.data?.pages[0]?.total ?? items.length;
   const errorMessage = groupsQuery.error instanceof Error ? groupsQuery.error.message : '';
   const listHeader = useMemo(
     () => (
@@ -63,7 +71,7 @@ export default function GroupsScreen() {
     <ScreenShell
       title="分组管理"
       subtitle=""
-      titleAside={<Text className="text-[11px] text-[#a2988a]">查看分组与调度归属。</Text>}
+      titleAside={<Text className="text-[11px] text-[#a2988a]">已加载 {items.length} / {totalGroups}</Text>}
       variant="minimal"
       scroll={false}
     >
@@ -72,9 +80,19 @@ export default function GroupsScreen() {
         renderItem={renderItem}
         keyExtractor={(item) => `${item.id}`}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={groupsQuery.isRefetching} onRefresh={() => void groupsQuery.refetch()} tintColor="#1d5f55" />}
+        refreshControl={<RefreshControl refreshing={groupsQuery.isRefetching && !groupsQuery.isFetchingNextPage} onRefresh={() => void groupsQuery.refetch()} tintColor="#1d5f55" />}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={emptyState}
+        ListFooterComponent={groupsQuery.hasNextPage ? (
+          <Pressable
+            disabled={groupsQuery.isFetchingNextPage}
+            onPress={() => void groupsQuery.fetchNextPage()}
+            className="h-14 flex-row items-center justify-center gap-2"
+          >
+            {groupsQuery.isFetchingNextPage ? <ActivityIndicator color="#1d5f55" size="small" /> : <ChevronDown color="#1d5f55" size={17} />}
+            <Text className="text-xs font-bold text-[#1d5f55]">{groupsQuery.isFetchingNextPage ? '加载中' : '加载更多分组'}</Text>
+          </Pressable>
+        ) : null}
         ItemSeparatorComponent={() => <View className="h-4" />}
         keyboardShouldPersistTaps="handled"
         removeClippedSubviews

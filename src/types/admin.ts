@@ -187,6 +187,138 @@ export type SystemVersion = {
   version: string;
 };
 
+export type AdminComplianceAcknowledgement = {
+  version: string;
+  document_zh: string;
+  document_en: string;
+  admin_user_id: number;
+  ip_address?: string;
+  user_agent?: string;
+  accepted_at: string;
+};
+
+export type AdminComplianceStatus = {
+  required: boolean;
+  version: string;
+  document_path_zh: string;
+  document_path_en: string;
+  document_url_zh: string;
+  document_url_en: string;
+  ack_phrase_zh: string;
+  ack_phrase_en: string;
+  acknowledgement?: AdminComplianceAcknowledgement;
+};
+
+export type SystemReleaseInfo = {
+  name: string;
+  body: string;
+  published_at: string;
+  html_url: string;
+};
+
+export type SystemUpdateInfo = {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  release_info?: SystemReleaseInfo;
+  cached: boolean;
+  warning?: string;
+  build_type: string;
+};
+
+export type PlatformUsage = {
+  platform: string;
+  today_actual_cost: number;
+  total_actual_cost: number;
+};
+
+export type BatchUserUsageStats = {
+  user_id: number;
+  today_actual_cost: number;
+  total_actual_cost: number;
+  by_platform?: PlatformUsage[];
+};
+
+export type BatchUsersUsage = {
+  stats: Record<string, BatchUserUsageStats>;
+};
+
+export type AlertEvent = {
+  id: number;
+  rule_id: number;
+  severity: string;
+  status: string;
+  title?: string;
+  description?: string;
+  metric_value?: number;
+  threshold_value?: number;
+  dimensions?: Record<string, unknown>;
+  fired_at: string;
+  resolved_at?: string | null;
+  email_sent: boolean;
+  created_at: string;
+};
+
+export type AlertEventsQuery = {
+  limit?: number;
+  status?: string;
+  severity?: string;
+  email_sent?: boolean;
+  time_range?: string;
+  start_time?: string;
+  end_time?: string;
+  before_fired_at?: string;
+  before_id?: number;
+  platform?: string;
+  group_id?: number;
+};
+
+export type OpsSystemLog = {
+  id: number;
+  created_at: string;
+  host: string;
+  level: string;
+  component: string;
+  message: string;
+  request_id?: string;
+  client_request_id?: string;
+  user_id?: number | null;
+  api_key_id?: number | null;
+  account_id?: number | null;
+  platform?: string;
+  model?: string;
+  extra?: Record<string, unknown>;
+};
+
+export type OpsSystemLogQuery = {
+  page?: number;
+  page_size?: number;
+  time_range?: '5m' | '30m' | '1h' | '6h' | '24h' | '7d' | '30d';
+  start_time?: string;
+  end_time?: string;
+  host?: string;
+  level?: string;
+  component?: string;
+  request_id?: string;
+  client_request_id?: string;
+  user_id?: number | null;
+  api_key_id?: number | null;
+  account_id?: number | null;
+  platform?: string;
+  model?: string;
+  q?: string;
+};
+
+export type OpsSystemLogSinkHealth = {
+  queue_depth: number;
+  queue_capacity: number;
+  dropped_count: number;
+  write_failed_count: number;
+  written_count: number;
+  avg_write_delay_ms: number;
+  last_error?: string;
+};
+
 export type AdminAccount = {
   id: number;
   name: string;

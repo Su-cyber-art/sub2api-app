@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
   ChevronDown,
@@ -17,7 +17,7 @@ import {
   Wrench,
 } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Platform, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
 import type { Edge } from 'react-native-safe-area-context';
 
 import { ListCard } from '@/src/components/list-card';
@@ -160,7 +160,7 @@ export function AccountsListScreen({ safeAreaEdges }: AccountsListScreenProps) {
   const [recoveryFeedbackByAccountId, setRecoveryFeedbackByAccountId] = useState<Record<number, RecoveryFeedback>>({});
   const keyword = useDebouncedValue(searchText.trim(), 300);
   const queryClient = useQueryClient();
-  const serverScope = config.activeAccountId ?? config.baseUrl;
+  const serverScope = config.activeAccountId || config.baseUrl;
 
   const versionQuery = useQuery({
     queryKey: ['system-version', serverScope],
@@ -170,9 +170,11 @@ export function AccountsListScreen({ safeAreaEdges }: AccountsListScreenProps) {
     staleTime: 5 * 60_000,
   });
 
-  const accountsQuery = useQuery({
+  const accountsQuery = useInfiniteQuery({
     queryKey: ['accounts', serverScope, keyword],
-    queryFn: () => listAccounts(keyword),
+    queryFn: ({ pageParam }) => listAccounts(keyword, pageParam, 20),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.page < lastPage.pages ? lastPage.page + 1 : undefined,
   });
 
   const toggleMutation = useMutation({
@@ -206,7 +208,7 @@ export function AccountsListScreen({ safeAreaEdges }: AccountsListScreenProps) {
     },
   });
 
-  const items = useMemo(() => accountsQuery.data?.items ?? [], [accountsQuery.data?.items]);
+  const items = useMemo(() => accountsQuery.data?.pages.flatMap((page) => page.items) ?? [], [accountsQuery.data]);
   const accountIds = useMemo(() => items.map((account) => account.id), [items]);
   const accountStatsQuery = useQuery({
     queryKey: ['account-today-stats', serverScope, accountIds],
@@ -258,12 +260,13 @@ export function AccountsListScreen({ safeAreaEdges }: AccountsListScreenProps) {
     : '';
 
   const summary = useMemo(() => {
-    const total = items.length;
+    const total = accountsQuery.data?.pages[0]?.total ?? items.length;
+    const loaded = items.length;
     const errors = items.filter((item) => getAccountVisualStatus(item).filterKey === 'error').length;
     const paused = items.filter((item) => getAccountVisualStatus(item).filterKey === 'paused').length;
     const active = items.filter((item) => getAccountVisualStatus(item).filterKey === 'active').length;
-    return { total, active, paused, errors };
-  }, [items]);
+    return { total, loaded, active, paused, errors };
+  }, [accountsQuery.data, items]);
 
   const serverVersion = formatServerVersion(versionQuery.data?.version);
   const serverVersionLabel = serverVersion
@@ -358,7 +361,7 @@ export function AccountsListScreen({ safeAreaEdges }: AccountsListScreenProps) {
 
           <View className="mt-3 flex-row gap-2">
             {([
-              ['all', `全部 ${summary.total}`],
+              ['all', `全部 ${summary.loaded}/${summary.total}`],
               ['active', `正常 ${summary.active}`],
               ['paused', `暂停 ${summary.paused}`],
               ['error', `异常 ${summary.errors}`],
@@ -396,7 +399,7 @@ export function AccountsListScreen({ safeAreaEdges }: AccountsListScreenProps) {
         </View>
       </View>
     ),
-    [filter, serverVersionLabel, statsModeLabel, summary.active, summary.errors, summary.paused, summary.total, usageSort]
+    [filter, serverVersionLabel, statsModeLabel, summary.active, summary.errors, summary.loaded, summary.paused, summary.total, usageSort]
   );
 
   const renderItem = useCallback(
@@ -596,7 +599,7 @@ export function AccountsListScreen({ safeAreaEdges }: AccountsListScreenProps) {
         showsVerticalScrollIndicator={false}
         refreshControl={(
           <RefreshControl
-            refreshing={accountsQuery.isRefetching || accountStatsQuery.isRefetching}
+            refreshing={(accountsQuery.isRefetching && !accountsQuery.isFetchingNextPage) || accountStatsQuery.isRefetching}
             onRefresh={() => {
               const requests: Promise<unknown>[] = [accountsQuery.refetch(), versionQuery.refetch()];
               if (accountIds.length > 0) requests.push(accountStatsQuery.refetch());
@@ -607,6 +610,16 @@ export function AccountsListScreen({ safeAreaEdges }: AccountsListScreenProps) {
         )}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={emptyState}
+        ListFooterComponent={accountsQuery.hasNextPage ? (
+          <Pressable
+            disabled={accountsQuery.isFetchingNextPage}
+            onPress={() => void accountsQuery.fetchNextPage()}
+            className="h-14 flex-row items-center justify-center gap-2"
+          >
+            {accountsQuery.isFetchingNextPage ? <ActivityIndicator color="#1d5f55" size="small" /> : <ChevronDown color="#1d5f55" size={17} />}
+            <Text className="text-xs font-bold text-[#1d5f55]">{accountsQuery.isFetchingNextPage ? '加载中' : '加载更多账号'}</Text>
+          </Pressable>
+        ) : null}
         ItemSeparatorComponent={() => <View className="h-4" />}
         keyboardShouldPersistTaps="handled"
         initialNumToRender={8}

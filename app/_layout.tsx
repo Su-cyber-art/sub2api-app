@@ -7,6 +7,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { queryClient } from '@/src/lib/query-client';
+import { AdminComplianceGate } from '@/src/components/admin-compliance-gate';
 import { markPerformance } from '@/src/lib/performance';
 import { adminConfigState, hydrateAdminConfig } from '@/src/store/admin-config';
 
@@ -104,6 +105,7 @@ export default function RootLayout() {
             />
           </Stack>
         )}
+        <AdminComplianceGate />
       </QueryClientProvider>
     </GestureHandlerRootView>
   );

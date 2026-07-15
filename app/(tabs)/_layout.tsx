@@ -1,5 +1,5 @@
 import { Redirect, Tabs } from 'expo-router';
-import { ChartNoAxesCombined, Settings2, Users } from 'lucide-react-native';
+import { BellRing, ChartNoAxesCombined, Settings2, Users } from 'lucide-react-native';
 
 import { adminConfigState, hasAuthenticatedAdminSession } from '@/src/store/admin-config';
 
@@ -54,6 +54,13 @@ export default function TabsLayout() {
         options={{
           title: '服务器',
           tabBarIcon: ({ color, size }) => <Settings2 color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="ops"
+        options={{
+          title: '运维',
+          tabBarIcon: ({ color, size }) => <BellRing color={color} size={size} />,
         }}
       />
       <Tabs.Screen name="groups" options={{ href: null }} />

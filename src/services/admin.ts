@@ -4,10 +4,14 @@ import type {
   AdminAccount,
   AdminApiKey,
   AdminGroup,
+  AdminComplianceStatus,
   AdminSettings,
   AdminUser,
+  AlertEvent,
+  AlertEventsQuery,
   BalanceOperation,
   BatchAccountTodayStats,
+  BatchUsersUsage,
   DashboardModelStats,
   DashboardSnapshot,
   DashboardStats,
@@ -15,6 +19,10 @@ import type {
   CreateAccountRequest,
   CreateUserRequest,
   PaginatedData,
+  OpsSystemLog,
+  OpsSystemLogQuery,
+  OpsSystemLogSinkHealth,
+  SystemUpdateInfo,
   SystemVersion,
   UsageStats,
   UserUsageSummary,
@@ -44,6 +52,21 @@ export function getAdminSettings() {
 
 export function getSystemVersion() {
   return adminFetch<SystemVersion>('/api/v1/admin/system/version');
+}
+
+export function checkSystemUpdates(force = false) {
+  return adminFetch<SystemUpdateInfo>(`/api/v1/admin/system/check-updates${buildQuery({ force: force || undefined })}`);
+}
+
+export function getAdminComplianceStatus() {
+  return adminFetch<AdminComplianceStatus>('/api/v1/admin/compliance');
+}
+
+export function acceptAdminCompliance(phrase: string, language = 'zh') {
+  return adminFetch<AdminComplianceStatus>('/api/v1/admin/compliance/accept', {
+    method: 'POST',
+    body: JSON.stringify({ phrase, language }),
+  });
 }
 
 export function getDashboardTrend(params: {
@@ -93,10 +116,17 @@ export function getUsageStats(params: {
   return adminFetch<UsageStats>(`/api/v1/admin/usage/stats${buildQuery(params)}`);
 }
 
-export function listUsers(search = '') {
+export function listUsers(search = '', page = 1, pageSize = 20) {
   return adminFetch<PaginatedData<AdminUser>>(
-    `/api/v1/admin/users${buildQuery({ page: 1, page_size: 20, search: search.trim() })}`
+    `/api/v1/admin/users${buildQuery({ page, page_size: pageSize, search: search.trim() })}`
   );
+}
+
+export function getBatchUsersUsage(userIds: number[]) {
+  return adminFetch<BatchUsersUsage>('/api/v1/admin/dashboard/users-usage', {
+    method: 'POST',
+    body: JSON.stringify({ user_ids: userIds }),
+  });
 }
 
 export function getUser(userId: number) {
@@ -141,9 +171,9 @@ export function updateUserStatus(userId: number, status: 'active' | 'disabled') 
   });
 }
 
-export function listGroups(search = '') {
+export function listGroups(search = '', page = 1, pageSize = 20) {
   return adminFetch<PaginatedData<AdminGroup>>(
-    `/api/v1/admin/groups${buildQuery({ page: 1, page_size: 20, search: search.trim() })}`
+    `/api/v1/admin/groups${buildQuery({ page, page_size: pageSize, search: search.trim() })}`
   );
 }
 
@@ -151,9 +181,9 @@ export function getGroup(groupId: number) {
   return adminFetch<AdminGroup>(`/api/v1/admin/groups/${groupId}`);
 }
 
-export function listAccounts(search = '') {
+export function listAccounts(search = '', page = 1, pageSize = 20) {
   return adminFetch<PaginatedData<AdminAccount>>(
-    `/api/v1/admin/accounts${buildQuery({ page: 1, page_size: 20, search: search.trim() })}`
+    `/api/v1/admin/accounts${buildQuery({ page, page_size: pageSize, search: search.trim() })}`
   );
 }
 
@@ -220,4 +250,23 @@ export function clearAccountTempUnschedulable(accountId: number) {
   return adminFetch<unknown>(`/api/v1/admin/accounts/${accountId}/temp-unschedulable`, {
     method: 'DELETE',
   });
+}
+
+export function listAlertEvents(params: AlertEventsQuery = {}) {
+  return adminFetch<AlertEvent[]>(`/api/v1/admin/ops/alert-events${buildQuery(params)}`);
+}
+
+export function updateAlertEventStatus(alertEventId: number, status: 'resolved' | 'manual_resolved') {
+  return adminFetch<unknown>(`/api/v1/admin/ops/alert-events/${alertEventId}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function listSystemLogs(params: OpsSystemLogQuery) {
+  return adminFetch<PaginatedData<OpsSystemLog>>(`/api/v1/admin/ops/system-logs${buildQuery(params)}`);
+}
+
+export function getSystemLogSinkHealth() {
+  return adminFetch<OpsSystemLogSinkHealth>('/api/v1/admin/ops/system-logs/health');
 }
