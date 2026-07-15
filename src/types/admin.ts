@@ -108,13 +108,58 @@ export type AdminUser = {
   username?: string | null;
   balance?: number;
   concurrency?: number;
+  rpm_limit?: number;
   status?: string;
   role?: string;
   current_concurrency?: number;
+  allowed_groups?: number[] | null;
+  group_rates?: Record<number, number>;
   notes?: string | null;
   last_used_at?: string | null;
   created_at?: string;
   updated_at?: string;
+};
+
+export type UpdateUserRequest = {
+  email?: string;
+  password?: string;
+  username?: string;
+  notes?: string;
+  role?: 'user' | 'admin';
+  balance?: number;
+  concurrency?: number;
+  rpm_limit?: number;
+  status?: 'active' | 'disabled';
+  allowed_groups?: number[] | null;
+  group_rates?: Record<number, number | null>;
+};
+
+export type UserPlatformQuotaPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok';
+export type UserPlatformQuotaWindow = 'daily' | 'weekly' | 'monthly';
+
+export type UserPlatformQuota = {
+  platform: UserPlatformQuotaPlatform;
+  daily_limit_usd: number | null;
+  weekly_limit_usd: number | null;
+  monthly_limit_usd: number | null;
+  daily_usage_usd: number;
+  weekly_usage_usd: number;
+  monthly_usage_usd: number;
+  daily_window_start?: string | null;
+  weekly_window_start?: string | null;
+  monthly_window_start?: string | null;
+  daily_window_resets_at?: string | null;
+  weekly_window_resets_at?: string | null;
+  monthly_window_resets_at?: string | null;
+};
+
+export type UpdateUserPlatformQuota = Pick<
+  UserPlatformQuota,
+  'platform' | 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd'
+>;
+
+export type UserPlatformQuotasResponse = {
+  platform_quotas: UserPlatformQuota[];
 };
 
 export type UserUsageSummary = {
@@ -408,12 +453,15 @@ export type OpsSystemLogSinkHealth = {
 export type AdminAccount = {
   id: number;
   name: string;
+  notes?: string | null;
   platform: string;
   type: string;
   status?: string;
   schedulable?: boolean;
+  proxy_id?: number | null;
   priority?: number;
   concurrency?: number;
+  load_factor?: number | null;
   current_concurrency?: number;
   rate_multiplier?: number;
   error_message?: string;
@@ -440,6 +488,57 @@ export type CreateAccountRequest = {
   group_ids?: number[];
 };
 
+export type UpdateAccountRequest = {
+  name?: string;
+  notes?: string | null;
+  type?: AccountType;
+  credentials?: Record<string, string | number | boolean | null | undefined>;
+  extra?: Record<string, string | number | boolean | null | undefined>;
+  proxy_id?: number | null;
+  concurrency?: number;
+  load_factor?: number | null;
+  priority?: number;
+  rate_multiplier?: number;
+  schedulable?: boolean;
+  status?: 'active' | 'inactive' | 'error';
+  group_ids?: number[];
+  expires_at?: number | null;
+  auto_pause_on_expired?: boolean;
+  confirm_mixed_channel_risk?: boolean;
+};
+
+export type BulkUpdateAccountsRequest = {
+  account_ids: number[];
+  name?: string;
+  proxy_id?: number | null;
+  concurrency?: number;
+  priority?: number;
+  rate_multiplier?: number;
+  load_factor?: number;
+  status?: 'active' | 'inactive' | 'error';
+  schedulable?: boolean;
+  group_ids?: number[];
+  credentials?: Record<string, string | number | boolean | null | undefined>;
+  extra?: Record<string, string | number | boolean | null | undefined>;
+  confirm_mixed_channel_risk?: boolean;
+};
+
+export type BulkUpdateAccountsResult = {
+  success: number;
+  failed: number;
+  success_ids?: number[];
+  failed_ids?: number[];
+  results: Array<{ account_id: number; success: boolean; error?: string }>;
+};
+
+export type BatchAccountOperationResult = {
+  total: number;
+  success: number;
+  failed: number;
+  errors?: Array<{ account_id: number; error: string }>;
+  warnings?: Array<{ account_id: number; warning: string }>;
+};
+
 export type CreateUserRequest = {
   email: string;
   password: string;
@@ -449,5 +548,7 @@ export type CreateUserRequest = {
   status?: 'active' | 'disabled';
   balance?: number;
   concurrency?: number;
-  [key: string]: string | number | boolean | null | undefined;
+  rpm_limit?: number;
+  allowed_groups?: number[] | null;
+  [key: string]: string | number | boolean | number[] | null | undefined;
 };

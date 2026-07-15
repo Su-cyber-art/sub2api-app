@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LineTrendChart } from '@/src/components/line-trend-chart';
-import { getDashboardSnapshot, getUsageStats, getUser, listUserApiKeys, updateUserBalance, updateUserStatus } from '@/src/services/admin';
+import { UserLimitsPanel } from '@/src/components/user-limits-panel';
+import { deleteUser, getDashboardSnapshot, getUsageStats, getUser, listUserApiKeys, updateUserBalance, updateUserStatus } from '@/src/services/admin';
 import type { AdminApiKey, BalanceOperation } from '@/src/types/admin';
 
 const colors = {
@@ -108,6 +109,19 @@ function formatTime(value?: string | null) {
   const minutes = `${date.getMinutes()}`.padStart(2, '0');
 
   return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
+async function confirmUserDelete(email: string) {
+  const message = `确认删除用户“${email}”吗？该操作无法撤销。`;
+  if (Platform.OS === 'web') {
+    return typeof globalThis.confirm === 'function' ? globalThis.confirm(`删除用户\n\n${message}`) : false;
+  }
+  return new Promise<boolean>((resolve) => {
+    Alert.alert('删除用户', message, [
+      { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+      { text: '确认删除', style: 'destructive', onPress: () => resolve(true) },
+    ]);
+  });
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -244,6 +258,7 @@ export default function UserDetailScreen() {
   const [notes, setNotes] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const [rangeKey, setRangeKey] = useState<RangeKey>('7d');
@@ -311,6 +326,17 @@ export default function UserDetailScreen() {
     onError: (error) => setStatusError(getErrorMessage(error)),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteUser(userId),
+    onSuccess: async () => {
+      setDeleteError(null);
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.removeQueries({ queryKey: ['user', userId] });
+      router.replace('/(tabs)/users');
+    },
+    onError: (error) => setDeleteError(getErrorMessage(error)),
+  });
+
   const user = userQuery.data;
   const apiKeys = apiKeysQuery.data?.items ?? [];
 
@@ -371,6 +397,12 @@ export default function UserDetailScreen() {
         },
       },
     ]);
+  }
+
+  async function handleDeleteUser() {
+    if (!user || user.role?.toLowerCase() === 'admin') return;
+    setDeleteError(null);
+    if (await confirmUserDelete(user.email)) deleteMutation.mutate();
   }
 
   return (
@@ -453,6 +485,8 @@ export default function UserDetailScreen() {
               ) : null}
             </Section>
           ) : null}
+
+          {user ? <UserLimitsPanel user={user} /> : null}
 
           <Section title="总用量">
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -634,6 +668,26 @@ export default function UserDetailScreen() {
               <Text style={{ color: '#fff', fontWeight: '700' }}>{balanceMutation.isPending ? '提交中...' : '确认提交'}</Text>
             </Pressable>
           </Section>
+
+          {user ? (
+            <Section title="危险操作">
+              <Text style={{ color: colors.subtext, fontSize: 12, lineHeight: 18 }}>
+                删除后用户将无法继续使用现有 API Key，操作不可撤销。
+              </Text>
+              {deleteError ? (
+                <Text style={{ marginTop: 10, borderRadius: 8, backgroundColor: colors.errorBg, padding: 10, color: colors.errorText, fontSize: 12 }}>
+                  {deleteError}
+                </Text>
+              ) : null}
+              <Pressable
+                disabled={deleteMutation.isPending || user.role?.toLowerCase() === 'admin'}
+                onPress={() => void handleDeleteUser()}
+                style={{ marginTop: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#8b3f1f', opacity: deleteMutation.isPending || user.role?.toLowerCase() === 'admin' ? 0.5 : 1 }}
+              >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>{deleteMutation.isPending ? '删除中' : user.role?.toLowerCase() === 'admin' ? '管理员不可删除' : '删除用户'}</Text>
+              </Pressable>
+            </Section>
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </>

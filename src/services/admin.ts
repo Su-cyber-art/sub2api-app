@@ -10,8 +10,11 @@ import type {
   AlertEvent,
   AlertEventsQuery,
   BalanceOperation,
+  BatchAccountOperationResult,
   BatchAccountTodayStats,
   BatchUsersUsage,
+  BulkUpdateAccountsRequest,
+  BulkUpdateAccountsResult,
   DashboardModelStats,
   DashboardSnapshot,
   DashboardStats,
@@ -29,6 +32,12 @@ import type {
   SystemVersion,
   UsageStats,
   UpdateGroupRequest,
+  UpdateAccountRequest,
+  UpdateUserPlatformQuota,
+  UpdateUserRequest,
+  UserPlatformQuotasResponse,
+  UserPlatformQuotaPlatform,
+  UserPlatformQuotaWindow,
   UserUsageSummary,
 } from '@/src/types/admin';
 
@@ -144,6 +153,41 @@ export function createUser(body: CreateUserRequest) {
   });
 }
 
+export function updateUser(userId: number, body: UpdateUserRequest) {
+  return adminFetch<AdminUser>(`/api/v1/admin/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteUser(userId: number) {
+  return adminFetch<{ message: string }>(`/api/v1/admin/users/${userId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getUserPlatformQuotas(userId: number) {
+  return adminFetch<UserPlatformQuotasResponse>(`/api/v1/admin/users/${userId}/platform-quotas`);
+}
+
+export function updateUserPlatformQuotas(userId: number, quotas: UpdateUserPlatformQuota[]) {
+  return adminFetch<UserPlatformQuotasResponse>(`/api/v1/admin/users/${userId}/platform-quotas`, {
+    method: 'PUT',
+    body: JSON.stringify({ quotas }),
+  });
+}
+
+export function resetUserPlatformQuotaWindow(
+  userId: number,
+  platform: UserPlatformQuotaPlatform,
+  window: UserPlatformQuotaWindow
+) {
+  return adminFetch<UserPlatformQuotasResponse>(`/api/v1/admin/users/${userId}/platform-quotas/reset`, {
+    method: 'POST',
+    body: JSON.stringify({ platform, window }),
+  });
+}
+
 export function getUserUsage(userId: number, period: 'day' | 'week' | 'month' = 'month') {
   return adminFetch<UserUsageSummary>(`/api/v1/admin/users/${userId}/usage${buildQuery({ period })}`);
 }
@@ -219,6 +263,49 @@ export function createAccount(body: CreateAccountRequest) {
   return adminFetch<AdminAccount>('/api/v1/admin/accounts', {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+}
+
+export function updateAccount(accountId: number, body: UpdateAccountRequest) {
+  return adminFetch<AdminAccount>(`/api/v1/admin/accounts/${accountId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+export function duplicateAccount(accountId: number) {
+  const operationId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return adminFetch<AdminAccount>(
+    `/api/v1/admin/accounts/${accountId}/duplicate`,
+    { method: 'POST' },
+    { idempotencyKey: `account-duplicate-${accountId}-${operationId}` }
+  );
+}
+
+export function deleteAccount(accountId: number) {
+  return adminFetch<{ message: string }>(`/api/v1/admin/accounts/${accountId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function bulkUpdateAccounts(body: BulkUpdateAccountsRequest) {
+  return adminFetch<BulkUpdateAccountsResult>('/api/v1/admin/accounts/bulk-update', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function batchClearAccountErrors(accountIds: number[]) {
+  return adminFetch<BatchAccountOperationResult>('/api/v1/admin/accounts/batch-clear-error', {
+    method: 'POST',
+    body: JSON.stringify({ account_ids: accountIds }),
+  });
+}
+
+export function batchRefreshAccounts(accountIds: number[]) {
+  return adminFetch<BatchAccountOperationResult>('/api/v1/admin/accounts/batch-refresh', {
+    method: 'POST',
+    body: JSON.stringify({ account_ids: accountIds }),
   });
 }
 
