@@ -13,7 +13,8 @@
 - `app.json` 已配置 `runtimeVersion.policy = appVersion`
 - `app.json` 已配置 `updates.url`
 - `package.json` 已包含 `expo-dev-client`
-- `eas.json` 已配置 `development / preview / production` 三套 profile
+- `eas.json` 已配置 `development / development-device / preview / production` 四套 profile
+- 项目已升级到 Expo SDK 56，iOS 原生页面使用 `@expo/ui` 的 SwiftUI 与 Swift Charts
 
 ## 登录状态检查
 
@@ -26,7 +27,9 @@ npx eas whoami
 
 ### 1. Expo Go 适合什么
 
-`Expo Go` 适合：
+当前 Expo Go 可以用于部分 SDK 56 快速预览，但本项目不把它作为 iOS 原生验收环境。日常 iOS 验收使用 development build，确保与最终 IPA 的原生模块和运行时一致。
+
+`Expo Go` 仍适合：
 
 - `npx expo start`
 - 本地 Metro 联调
@@ -55,7 +58,7 @@ npx eas whoami
 npm run start
 ```
 
-如果要用 dev client 连本地：
+如果要用 dev client 连本地（iOS 原生页面的推荐方式）：
 
 ```bash
 npm run start:dev-client
@@ -80,6 +83,7 @@ npm run eas:build:development
 ```bash
 npm run eas:build:development:android
 npm run eas:build:development:ios
+npm run eas:build:development:ios:device
 ```
 
 当前 `development` profile 已配置：
@@ -87,6 +91,14 @@ npm run eas:build:development:ios
 - `developmentClient: true`
 - `distribution: internal`
 - `ios.simulator: true`
+
+真机使用 `development-device` profile：
+
+- `developmentClient: true`
+- `distribution: internal`
+- `ios.simulator: false`
+
+首次构建时 EAS 会引导注册测试设备并处理 Apple 签名。SDK 56 的 iOS 最低版本是 16.4；本地原生构建需要 Xcode 26.4 或更高版本。
 
 适合先生成一个测试壳，后续再配合 `Expo / EAS Update` 做快速验证。
 
@@ -128,6 +140,7 @@ npx eas-cli@latest update --branch preview --message "your message"
 ```bash
 npm run eas:build:development:android
 npm run eas:build:development:ios
+npm run eas:build:development:ios:device
 ```
 
 装好开发壳后，再发：
@@ -199,6 +212,12 @@ npx eas-cli@latest update --branch preview --message "align dev-client and user 
 npm ci
 npx eas build --non-interactive --profile <profile> --platform <platform>
 ```
+
+## 爱思助手自签 IPA
+
+没有付费 Apple Developer 账号时，可使用仓库的 `iOS Unsigned IPA` 工作流在 GitHub macOS runner 上编译未签名 arm64 Release IPA，再用爱思助手或个人证书重签。
+
+该流程不需要 `EXPO_TOKEN` 或 Apple 凭据，具体步骤见 [iOS 未签名 IPA 与爱思助手自签](IOS_UNSIGNED_IPA.md)。
 
 ## 正式包
 

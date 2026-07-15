@@ -3,7 +3,7 @@ import '@/src/global.css';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { queryClient } from '@/src/lib/query-client';
@@ -16,6 +16,22 @@ const { useSnapshot } = require('valtio/react');
 export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
+
+const detailScreenBaseOptions = {
+  animation: 'slide_from_right' as const,
+  presentation: 'card' as const,
+  headerShown: true,
+  headerTintColor: Platform.OS === 'ios' ? '#007AFF' : '#16181a',
+  headerStyle: { backgroundColor: Platform.OS === 'ios' ? '#F2F2F7' : '#f4efe4' },
+  headerShadowVisible: false,
+  ...(Platform.OS === 'ios'
+    ? { headerBackButtonDisplayMode: 'minimal' as const }
+    : { headerBackTitle: '返回' }),
+};
+
+function detailScreenOptions(title: string) {
+  return { ...detailScreenBaseOptions, title };
+}
 
 export default function RootLayout() {
   const config = useSnapshot(adminConfigState);
@@ -31,8 +47,8 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         {!isReady ? (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f4efe4' }}>
-            <ActivityIndicator color="#1d5f55" />
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Platform.OS === 'ios' ? '#F2F2F7' : '#f4efe4' }}>
+            <ActivityIndicator color={Platform.OS === 'ios' ? '#007AFF' : '#1d5f55'} />
           </View>
         ) : (
           <Stack initialRouteName="(tabs)" screenOptions={{ headerShown: false }}>
@@ -40,68 +56,23 @@ export default function RootLayout() {
             <Stack.Screen name="login" />
             <Stack.Screen
               name="users/[id]"
-              options={{
-                animation: 'slide_from_right',
-                presentation: 'card',
-                headerShown: true,
-                title: '用户详情',
-                headerBackTitle: '返回',
-                headerTintColor: '#16181a',
-                headerStyle: { backgroundColor: '#f4efe4' },
-                headerShadowVisible: false,
-              }}
+              options={detailScreenOptions('用户详情')}
             />
             <Stack.Screen
               name="users/create-account"
-              options={{
-                animation: 'slide_from_right',
-                presentation: 'card',
-                headerShown: true,
-                title: '添加账号',
-                headerBackTitle: '返回',
-                headerTintColor: '#16181a',
-                headerStyle: { backgroundColor: '#f4efe4' },
-                headerShadowVisible: false,
-              }}
+              options={detailScreenOptions('添加账号')}
             />
             <Stack.Screen
               name="users/create-user"
-              options={{
-                animation: 'slide_from_right',
-                presentation: 'card',
-                headerShown: true,
-                title: '添加用户',
-                headerBackTitle: '返回',
-                headerTintColor: '#16181a',
-                headerStyle: { backgroundColor: '#f4efe4' },
-                headerShadowVisible: false,
-              }}
+              options={detailScreenOptions('添加用户')}
             />
             <Stack.Screen
               name="accounts/create"
-              options={{
-                animation: 'slide_from_right',
-                presentation: 'card',
-                headerShown: true,
-                title: '添加账号',
-                headerBackTitle: '返回',
-                headerTintColor: '#16181a',
-                headerStyle: { backgroundColor: '#f4efe4' },
-                headerShadowVisible: false,
-              }}
+              options={detailScreenOptions('添加账号')}
             />
             <Stack.Screen
               name="accounts/overview"
-              options={{
-                animation: 'slide_from_right',
-                presentation: 'card',
-                headerShown: true,
-                title: '账号清单',
-                headerBackTitle: '返回',
-                headerTintColor: '#16181a',
-                headerStyle: { backgroundColor: '#f4efe4' },
-                headerShadowVisible: false,
-              }}
+              options={detailScreenOptions('账号清单')}
             />
           </Stack>
         )}

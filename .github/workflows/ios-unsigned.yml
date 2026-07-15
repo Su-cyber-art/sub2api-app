@@ -1,0 +1,206 @@
+name: iOS Unsigned IPA
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned device IPA
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      NODE_OPTIONS: --max-old-space-size=8192
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcode_version="$(xcodebuild -version | awk 'NR == 1 { print $2 }')"
+          major="${xcode_version%%.*}"
+          remainder="${xcode_version#*.}"
+          minor="${remainder%%.*}"
+          if (( major < 26 || (major == 26 && minor < 4) )); then
+            echo "::error::Expo SDK 56 requires Xcode 26.4 or newer; runner has ${xcode_version}."
+            exit 1
+          fi
+          echo "DERIVED_DATA_PATH=$RUNNER_TEMP/sub2api-derived-data" >> "$GITHUB_ENV"
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Validate Expo project
+        run: |
+          npm run typecheck
+          npx expo-doctor
+
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install --repo-update
+
+      - name: Resolve workspace and scheme
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          if [[ -z "$workspace" ]]; then
+            echo "::error::No Xcode workspace was generated."
+            exit 1
+          fi
+
+          schemes_json="$(xcodebuild -workspace "$workspace" -list -json)"
+          workspace_name="$(basename "$workspace" .xcworkspace)"
+          scheme="$(printf '%s' "$schemes_json" | jq -r --arg candidate "$workspace_name" '
+            .workspace.schemes as $schemes
+            | ($schemes | map(select(. == $candidate)) | .[0])
+              // ($schemes | map(select(ascii_downcase | contains("sub2api"))) | .[0])
+              // ($schemes | map(select(startswith("Pods-") | not)) | .[0])
+              // empty
+          ')"
+          if [[ -z "$scheme" ]]; then
+            echo "::error::No application scheme was found in ${workspace}."
+            printf '%s\n' "$schemes_json"
+            exit 1
+          fi
+
+          echo "IOS_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          echo "IOS_SCHEME=$scheme" >> "$GITHUB_ENV"
+          echo "Workspace: $workspace"
+          echo "Scheme: $scheme"
+
+      - name: Build unsigned arm64 application
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NODE_BINARY="$(command -v node)"
+          build_args=(
+            -workspace "$IOS_WORKSPACE"
+            -scheme "$IOS_SCHEME"
+            -configuration Release
+            -sdk iphoneos
+            -destination 'generic/platform=iOS'
+            -derivedDataPath "$DERIVED_DATA_PATH"
+            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGN_IDENTITY=
+            DEVELOPMENT_TEAM=
+            ARCHS=arm64
+            ONLY_ACTIVE_ARCH=NO
+            COMPILER_INDEX_STORE_ENABLE=NO
+          )
+
+          if command -v xcbeautify >/dev/null 2>&1; then
+            set -o pipefail
+            xcodebuild "${build_args[@]}" build | xcbeautify
+          else
+            xcodebuild "${build_args[@]}" build
+          fi
+
+      - name: Package and verify unsigned IPA
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          product_dir="$DERIVED_DATA_PATH/Build/Products/Release-iphoneos"
+          app_path="$(find "$product_dir" -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$app_path" ]]; then
+            echo "::error::Release device .app was not produced."
+            find "$DERIVED_DATA_PATH/Build/Products" -maxdepth 3 -print
+            exit 1
+          fi
+
+          info_plist="$app_path/Info.plist"
+          executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$info_plist")"
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")"
+          binary_info="$(file "$app_path/$executable")"
+
+          if [[ "$binary_info" != *arm64* ]]; then
+            echo "::error::The application binary is not an arm64 device build: ${binary_info}"
+            exit 1
+          fi
+
+          if ! find "$app_path" -type f \( -name 'main.jsbundle' -o -name '*.hbc' \) -print -quit | grep -q .; then
+            echo "::error::No embedded JavaScript/Hermes bundle was found in the Release app."
+            exit 1
+          fi
+
+          rm -rf "$app_path/_CodeSignature"
+          rm -f "$app_path/embedded.mobileprovision"
+
+          staging="$RUNNER_TEMP/unsigned-ipa"
+          artifact_dir="$GITHUB_WORKSPACE/artifacts"
+          artifact_name="sub2api-mobile-${version}-ios-unsigned-${GITHUB_SHA::7}.ipa"
+          artifact_path="$artifact_dir/$artifact_name"
+          rm -rf "$staging" "$artifact_dir"
+          mkdir -p "$staging/Payload" "$artifact_dir"
+          cp -R "$app_path" "$staging/Payload/"
+          (cd "$staging" && /usr/bin/zip -qry "$artifact_path" Payload)
+
+          unzip -tq "$artifact_path"
+          if ! unzip -l "$artifact_path" | grep -q 'Payload/.*\.app/Info.plist'; then
+            echo "::error::The IPA does not contain a standard Payload/*.app structure."
+            exit 1
+          fi
+
+          sha256="$(shasum -a 256 "$artifact_path" | awk '{ print $1 }')"
+          cat > "$artifact_dir/BUILD-INFO.txt" <<EOF
+          Artifact: $artifact_name
+          Bundle ID: $bundle_id
+          Version: $version
+          Architecture: arm64
+          Signed: no
+          Commit: $GITHUB_SHA
+          SHA-256: $sha256
+          EOF
+
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Publish build summary
+        shell: bash
+        run: |
+          {
+            echo '## Unsigned iOS IPA'
+            echo
+            echo "- Artifact: \`${{ steps.package.outputs.artifact_name }}\`"
+            echo "- Bundle ID: \`${{ steps.package.outputs.bundle_id }}\`"
+            echo "- Version: \`${{ steps.package.outputs.version }}\`"
+            echo '- Architecture: `arm64`'
+            echo '- Code signing: `unsigned`'
+            echo "- SHA-256: \`${{ steps.package.outputs.sha256 }}\`"
+            echo
+            echo 'Download the workflow artifact, extract the IPA, then re-sign it before installation.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: sub2api-mobile-ios-unsigned-${{ github.run_number }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

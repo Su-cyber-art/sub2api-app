@@ -13,16 +13,18 @@ Mobile-first admin console for Sub2API operations, built with Expo + React Nativ
 ## Highlights
 
 - Cross-platform app (iOS / Android / Web) for operational and admin workflows.
+- Native iOS overview and user-management surfaces built with SwiftUI and Swift Charts through Expo UI.
 - Server health and metrics monitoring views.
 - User, API key, account, and group management pages.
 - Multi-account admin server switching in settings.
 
 ## Tech Stack
 
-- Expo SDK 54
-- React Native 0.81
-- React 19
+- Expo SDK 56
+- React Native 0.85
+- React 19.2
 - Expo Router
+- Expo UI (SwiftUI on iOS)
 - TanStack Query
 - Valtio
 
@@ -30,6 +32,8 @@ Mobile-first admin console for Sub2API operations, built with Expo + React Nativ
 
 - Node.js 20+
 - npm 10+
+- iOS 16.4+ for the SwiftUI app
+- Xcode 26.4+ for local iOS native builds, or EAS Build from Windows/Linux
 
 ## Getting Started
 
@@ -61,6 +65,7 @@ EAS scripts:
 
 ```bash
 npm run eas:build:development
+npm run eas:build:development:ios:device
 npm run eas:build:preview
 npm run eas:build:production
 ```
@@ -81,6 +86,13 @@ GitHub Actions Android build (downloadable):
 - Inputs: `profile=preview`, `platform=android`
 - Requirement: repository secret `EXPO_TOKEN`
 - Download: after completion, open the run **Summary** and use the `ANDROID download` link.
+
+GitHub Actions unsigned iOS build for personal re-signing:
+
+- Workflow: `.github/workflows/ios-unsigned.yml`
+- Trigger: **Actions -> iOS Unsigned IPA -> Run workflow**
+- Output: unsigned arm64 Release `.ipa` artifact
+- Install: re-sign the IPA before installing; see [iOS Unsigned IPA](docs/IOS_UNSIGNED_IPA.md)
 
 ## Project Structure
 
