@@ -53,6 +53,8 @@ npm run ios
 npm run web
 ```
 
+`npm run web` starts both Expo Web and the local CORS proxy. In the login screen, enter the real Sub2API server URL; see [Local Proxy Setup](docs/LOCAL_PROXY_SETUP.md) for fixed and production proxy configuration.
+
 ## Build & Release
 
 EAS scripts:

@@ -17,14 +17,13 @@ Thanks for your interest in contributing.
    npm run start
    ```
 
-4. For web + admin proxy testing (recommended for admin endpoints):
+4. For web + admin proxy testing:
 
    ```bash
-   SUB2API_BASE_URL="https://your-upstream-host.example.com" \
-   SUB2API_ADMIN_API_KEY="admin-xxxx" \
-   ALLOW_ORIGIN="http://localhost:8081" \
-   npm run dev:web-proxy
+   npm run web
    ```
+
+   Enter the real upstream URL and Admin Key in the login screen. The local development proxy starts automatically.
 
 ## Branching and Commits
 

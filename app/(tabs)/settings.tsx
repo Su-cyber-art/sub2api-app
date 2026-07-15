@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { z } from 'zod';
 
 import { getAdminSettings, getDashboardStats } from '@/src/services/admin';
+import { getAdminRequestErrorMessage } from '@/src/lib/admin-error-message';
 import { queryClient } from '@/src/lib/query-client';
 import { adminConfigState, removeAdminAccount, saveAdminConfig, switchAdminAccount, type AdminAccountProfile } from '@/src/store/admin-config';
 
@@ -40,20 +41,7 @@ const colors = {
 };
 
 function getConnectionErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    switch (error.message) {
-      case 'BASE_URL_REQUIRED':
-        return '请先填写服务器地址。';
-      case 'ADMIN_API_KEY_REQUIRED':
-        return '请先填写 Admin Key。';
-      case 'INVALID_SERVER_RESPONSE':
-        return '当前地址返回的数据不正确，请确认它是可用的管理接口。';
-      default:
-        return error.message;
-    }
-  }
-
-  return '连接失败，请检查服务器地址、Admin Key 和网络连通性。';
+  return getAdminRequestErrorMessage(error, '连接失败，请检查服务器地址、Admin Key 和网络连通性。');
 }
 
 function ServerCard({

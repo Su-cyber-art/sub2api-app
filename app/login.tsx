@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
 import { getAdminSettings, getDashboardStats } from '@/src/services/admin';
+import { getAdminRequestErrorMessage } from '@/src/lib/admin-error-message';
 import { queryClient } from '@/src/lib/query-client';
 import { adminConfigState, hasAuthenticatedAdminSession, saveAdminConfig } from '@/src/store/admin-config';
 
@@ -38,20 +39,7 @@ const colors = {
 };
 
 function getConnectionErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    switch (error.message) {
-      case 'BASE_URL_REQUIRED':
-        return '请先填写服务器地址。';
-      case 'ADMIN_API_KEY_REQUIRED':
-        return '请先填写 Admin Key。';
-      case 'INVALID_SERVER_RESPONSE':
-        return '当前地址返回的数据不正确，请确认它是可用的管理接口。';
-      default:
-        return error.message;
-    }
-  }
-
-  return '连接失败，请检查服务器地址、Admin Key 和网络连通性。';
+  return getAdminRequestErrorMessage(error, '连接失败，请检查服务器地址、Admin Key 和网络连通性。');
 }
 
 export default function LoginScreen() {
@@ -67,8 +55,9 @@ export default function LoginScreen() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
   const [connectionMessage, setConnectionMessage] = useState('');
   const [showAdminKey, setShowAdminKey] = useState(false);
+  const [disableAutoRedirect, setDisableAutoRedirect] = useState(false);
 
-  if (hasAccount) {
+  if (hasAccount && !disableAutoRedirect) {
     return <Redirect href="/monitor" />;
   }
 
@@ -167,6 +156,7 @@ export default function LoginScreen() {
               style={{ backgroundColor: connectionState === 'checking' ? '#7ca89f' : colors.primary, borderRadius: 18, paddingVertical: 15, alignItems: 'center' }}
               disabled={connectionState === 'checking'}
               onPress={handleSubmit(async (values) => {
+                setDisableAutoRedirect(true);
                 setConnectionState('checking');
                 setConnectionMessage('正在验证服务器连接...');
 

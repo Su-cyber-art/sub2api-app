@@ -1,8 +1,8 @@
 export type ApiEnvelope<T> = {
-  code: number;
-  message: string;
+  code: number | string;
+  message?: string;
   reason?: string;
-  metadata?: Record<string, string>;
+  metadata?: Record<string, unknown>;
   data?: T;
 };
 
@@ -177,6 +177,14 @@ export type AccountTodayStats = {
   cost: number;
   standard_cost?: number;
   user_cost?: number;
+};
+
+export type BatchAccountTodayStats = {
+  stats: Record<string, AccountTodayStats>;
+};
+
+export type SystemVersion = {
+  version: string;
 };
 
 export type AdminAccount = {

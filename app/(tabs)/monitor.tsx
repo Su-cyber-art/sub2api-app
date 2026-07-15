@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BarChartCard } from '@/src/components/bar-chart-card';
 import { formatTokenValue } from '@/src/lib/formatters';
+import { getAdminRequestErrorMessage } from '@/src/lib/admin-error-message';
 import { DonutChartCard } from '@/src/components/donut-chart-card';
 import { LineTrendChart } from '@/src/components/line-trend-chart';
 import { getAdminSettings, getDashboardModels, getDashboardStats, getDashboardTrend, listAccounts } from '@/src/services/admin';
@@ -125,20 +126,7 @@ function getPointLabel(value: string, rangeKey: RangeKey) {
 }
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    switch (error.message) {
-      case 'BASE_URL_REQUIRED':
-        return '请先去服务器页填写服务地址。';
-      case 'ADMIN_API_KEY_REQUIRED':
-        return '请先去服务器页填写 Admin Token。';
-      case 'INVALID_SERVER_RESPONSE':
-        return '当前服务返回的数据格式不正确，请确认它是可用的 Sub2API 管理接口。';
-      default:
-        return error.message;
-    }
-  }
-
-  return '当前无法加载概览数据，请检查服务地址、Token 和网络。';
+  return getAdminRequestErrorMessage(error, '当前无法加载概览数据，请检查服务地址、Token 和网络。');
 }
 
 function Section({ title, subtitle, children, right }: { title: string; subtitle?: string; children: React.ReactNode; right?: React.ReactNode }) {

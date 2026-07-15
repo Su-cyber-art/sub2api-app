@@ -7,6 +7,7 @@ import type {
   AdminSettings,
   AdminUser,
   BalanceOperation,
+  BatchAccountTodayStats,
   DashboardModelStats,
   DashboardSnapshot,
   DashboardStats,
@@ -14,6 +15,7 @@ import type {
   CreateAccountRequest,
   CreateUserRequest,
   PaginatedData,
+  SystemVersion,
   UsageStats,
   UserUsageSummary,
 } from '@/src/types/admin';
@@ -38,6 +40,10 @@ export function getDashboardStats() {
 
 export function getAdminSettings() {
   return adminFetch<AdminSettings>('/api/v1/admin/settings');
+}
+
+export function getSystemVersion() {
+  return adminFetch<SystemVersion>('/api/v1/admin/system/version');
 }
 
 export function getDashboardTrend(params: {
@@ -166,6 +172,13 @@ export function getAccountTodayStats(accountId: number) {
   return adminFetch<AccountTodayStats>(`/api/v1/admin/accounts/${accountId}/today-stats`);
 }
 
+export function getBatchAccountTodayStats(accountIds: number[]) {
+  return adminFetch<BatchAccountTodayStats>('/api/v1/admin/accounts/today-stats/batch', {
+    method: 'POST',
+    body: JSON.stringify({ account_ids: accountIds }),
+  });
+}
+
 export function testAccount(accountId: number) {
   return adminFetch(`/api/v1/admin/accounts/${accountId}/test`, {
     method: 'POST',
@@ -182,5 +195,29 @@ export function setAccountSchedulable(accountId: number, schedulable: boolean) {
   return adminFetch<AdminAccount>(`/api/v1/admin/accounts/${accountId}/schedulable`, {
     method: 'POST',
     body: JSON.stringify({ schedulable }),
+  });
+}
+
+export function recoverAccountState(accountId: number) {
+  return adminFetch<unknown>(`/api/v1/admin/accounts/${accountId}/recover-state`, {
+    method: 'POST',
+  });
+}
+
+export function clearAccountError(accountId: number) {
+  return adminFetch<unknown>(`/api/v1/admin/accounts/${accountId}/clear-error`, {
+    method: 'POST',
+  });
+}
+
+export function clearAccountRateLimit(accountId: number) {
+  return adminFetch<unknown>(`/api/v1/admin/accounts/${accountId}/clear-rate-limit`, {
+    method: 'POST',
+  });
+}
+
+export function clearAccountTempUnschedulable(accountId: number) {
+  return adminFetch<unknown>(`/api/v1/admin/accounts/${accountId}/temp-unschedulable`, {
+    method: 'DELETE',
   });
 }
