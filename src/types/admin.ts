@@ -153,12 +153,17 @@ export type AdminApiKey = {
 
 export type BalanceOperation = 'set' | 'add' | 'subtract';
 
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok';
+export type GroupSubscriptionType = 'standard' | 'subscription';
+export type GroupStatus = 'active' | 'inactive';
+
 export type AdminGroup = {
   id: number;
   name: string;
   description?: string | null;
   platform: string;
   rate_multiplier?: number;
+  rpm_limit?: number;
   is_exclusive?: boolean;
   status?: string;
   subscription_type?: string;
@@ -169,6 +174,23 @@ export type AdminGroup = {
   sort_order?: number;
   created_at?: string;
   updated_at?: string;
+};
+
+export type CreateGroupRequest = {
+  name: string;
+  description?: string | null;
+  platform?: GroupPlatform;
+  rate_multiplier?: number;
+  rpm_limit?: number;
+  is_exclusive?: boolean;
+  subscription_type?: GroupSubscriptionType;
+  daily_limit_usd?: number | null;
+  weekly_limit_usd?: number | null;
+  monthly_limit_usd?: number | null;
+};
+
+export type UpdateGroupRequest = Partial<CreateGroupRequest> & {
+  status?: GroupStatus;
 };
 
 export type AccountTodayStats = {
@@ -271,6 +293,70 @@ export type AlertEventsQuery = {
   before_id?: number;
   platform?: string;
   group_id?: number;
+};
+
+export type OpsErrorLog = {
+  id: number;
+  created_at: string;
+  phase: string;
+  type: string;
+  error_owner: string;
+  error_source: string;
+  severity: string;
+  status_code: number;
+  platform: string;
+  model: string;
+  resolved: boolean;
+  resolved_at?: string | null;
+  resolved_by_user_id?: number | null;
+  client_request_id: string;
+  request_id: string;
+  message: string;
+  user_id?: number | null;
+  user_email: string;
+  api_key_id?: number | null;
+  api_key_name?: string;
+  api_key_deleted?: boolean;
+  account_id?: number | null;
+  account_name: string;
+  group_id?: number | null;
+  group_name: string;
+  client_ip?: string | null;
+  request_path?: string;
+  stream?: boolean;
+  inbound_endpoint?: string;
+  upstream_endpoint?: string;
+  requested_model?: string;
+  upstream_model?: string;
+  request_type?: number | null;
+  user_agent?: string;
+  deleted_key_owner_user_id?: number | null;
+  deleted_key_owner_email?: string | null;
+};
+
+export type OpsErrorListQuery = {
+  page?: number;
+  page_size?: number;
+  time_range?: '1h' | '24h' | '7d' | '30d';
+  start_time?: string;
+  end_time?: string;
+  platform?: string;
+  group_id?: number | null;
+  account_id?: number | null;
+  user_id?: number | null;
+  api_key_id?: number | null;
+  model?: string;
+  phase?: string;
+  category?: string;
+  error_owner?: string;
+  error_source?: string;
+  resolved?: 'true' | 'false';
+  view?: 'errors' | 'excluded' | 'all';
+  q?: string;
+  status_codes?: string;
+  status_codes_other?: boolean;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
 };
 
 export type OpsSystemLog = {

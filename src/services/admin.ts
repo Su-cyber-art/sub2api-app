@@ -17,7 +17,10 @@ import type {
   DashboardStats,
   DashboardTrend,
   CreateAccountRequest,
+  CreateGroupRequest,
   CreateUserRequest,
+  OpsErrorListQuery,
+  OpsErrorLog,
   PaginatedData,
   OpsSystemLog,
   OpsSystemLogQuery,
@@ -25,6 +28,7 @@ import type {
   SystemUpdateInfo,
   SystemVersion,
   UsageStats,
+  UpdateGroupRequest,
   UserUsageSummary,
 } from '@/src/types/admin';
 
@@ -181,6 +185,26 @@ export function getGroup(groupId: number) {
   return adminFetch<AdminGroup>(`/api/v1/admin/groups/${groupId}`);
 }
 
+export function createGroup(body: CreateGroupRequest) {
+  return adminFetch<AdminGroup>('/api/v1/admin/groups', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateGroup(groupId: number, body: UpdateGroupRequest) {
+  return adminFetch<AdminGroup>(`/api/v1/admin/groups/${groupId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteGroup(groupId: number) {
+  return adminFetch<unknown>(`/api/v1/admin/groups/${groupId}`, {
+    method: 'DELETE',
+  });
+}
+
 export function listAccounts(search = '', page = 1, pageSize = 20) {
   return adminFetch<PaginatedData<AdminAccount>>(
     `/api/v1/admin/accounts${buildQuery({ page, page_size: pageSize, search: search.trim() })}`
@@ -260,6 +284,17 @@ export function updateAlertEventStatus(alertEventId: number, status: 'resolved' 
   return adminFetch<unknown>(`/api/v1/admin/ops/alert-events/${alertEventId}/status`, {
     method: 'PUT',
     body: JSON.stringify({ status }),
+  });
+}
+
+export function listRequestErrors(params: OpsErrorListQuery) {
+  return adminFetch<PaginatedData<OpsErrorLog>>(`/api/v1/admin/ops/request-errors${buildQuery(params)}`);
+}
+
+export function updateRequestErrorResolved(errorId: number, resolved: boolean) {
+  return adminFetch<unknown>(`/api/v1/admin/ops/request-errors/${errorId}/resolve`, {
+    method: 'PUT',
+    body: JSON.stringify({ resolved }),
   });
 }
 

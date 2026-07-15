@@ -2,10 +2,12 @@ import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
   BellRing,
+  Bug,
   CheckCircle2,
   ChevronDown,
   CircleAlert,
   FileText,
+  RotateCcw,
   Search,
 } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
@@ -30,17 +32,21 @@ import { queryClient } from '@/src/lib/query-client';
 import {
   getSystemLogSinkHealth,
   listAlertEvents,
+  listRequestErrors,
   listSystemLogs,
   updateAlertEventStatus,
+  updateRequestErrorResolved,
 } from '@/src/services/admin';
 import { adminConfigState, hasAuthenticatedAdminSession } from '@/src/store/admin-config';
-import type { AlertEvent, OpsSystemLog } from '@/src/types/admin';
+import type { AlertEvent, OpsErrorLog, OpsSystemLog } from '@/src/types/admin';
 
 const { useSnapshot } = require('valtio/react');
 
-type OpsMode = 'alerts' | 'logs';
+type OpsMode = 'alerts' | 'errors' | 'logs';
 type AlertStatusFilter = 'all' | 'firing' | 'resolved';
 type AlertSeverityFilter = 'all' | 'critical' | 'error' | 'warning' | 'info';
+type ErrorStatusFilter = 'all' | 'unresolved' | 'resolved';
+type ErrorTimeRange = '1h' | '24h' | '7d';
 type LogLevelFilter = 'all' | 'error' | 'warn' | 'info' | 'debug';
 type LogTimeRange = '1h' | '24h' | '7d';
 
@@ -165,6 +171,67 @@ function AlertEventRow({ item, resolving, onResolve }: { item: AlertEvent; resol
   );
 }
 
+function RequestErrorRow({
+  item,
+  updating,
+  onToggleResolved,
+}: {
+  item: OpsErrorLog;
+  updating: boolean;
+  onToggleResolved: () => void;
+}) {
+  const tone = severityStyle(item.severity || 'error');
+  const requestId = item.request_id || item.client_request_id;
+  const subject = [item.platform, item.model].filter(Boolean).join(' / ');
+  const owner = [item.user_email, item.account_name, item.group_name].filter(Boolean).join(' · ');
+
+  return (
+    <View style={{ borderRadius: 8, borderWidth: 1, borderColor: item.resolved ? colors.border : '#e8c5b7', backgroundColor: colors.surface, padding: 13, gap: 9 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 9 }}>
+        <Bug color={item.resolved ? '#81786d' : colors.danger} size={18} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={2} style={{ color: colors.text, fontSize: 14, lineHeight: 19, fontWeight: '800' }}>
+            {item.type || item.phase || `请求错误 #${item.id}`}
+          </Text>
+          <Text style={{ color: colors.subtext, fontSize: 10, marginTop: 4 }}>{formatDateTime(item.created_at)}</Text>
+        </View>
+        <View style={{ borderRadius: 6, backgroundColor: tone.backgroundColor, paddingHorizontal: 8, paddingVertical: 4 }}>
+          <Text style={{ color: tone.color, fontSize: 10, fontWeight: '800' }}>{item.status_code || item.severity}</Text>
+        </View>
+      </View>
+
+      <Text selectable style={{ color: '#514a42', fontSize: 13, lineHeight: 20 }}>{item.message || '未记录错误信息'}</Text>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Text style={{ color: item.resolved ? colors.primary : colors.danger, fontSize: 10, fontWeight: '800' }}>{item.resolved ? '已解除' : '待处理'}</Text>
+        {item.phase ? <Text style={{ color: colors.subtext, fontSize: 10 }}>阶段 {item.phase}</Text> : null}
+        {item.error_source ? <Text style={{ color: colors.subtext, fontSize: 10 }}>来源 {item.error_source}</Text> : null}
+        {subject ? <Text style={{ color: colors.subtext, fontSize: 10 }}>{subject}</Text> : null}
+      </View>
+
+      {owner ? <Text numberOfLines={1} style={{ color: colors.subtext, fontSize: 10 }}>{owner}</Text> : null}
+      {requestId ? <Text selectable numberOfLines={1} style={{ color: '#81786d', fontSize: 10 }}>请求 {requestId}</Text> : null}
+
+      <Pressable
+        disabled={updating}
+        onPress={onToggleResolved}
+        style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 8, backgroundColor: updating ? '#a8a096' : item.resolved ? colors.muted : colors.primary }}
+      >
+        {updating ? (
+          <ActivityIndicator color={item.resolved ? colors.primary : '#fff'} size="small" />
+        ) : item.resolved ? (
+          <RotateCcw color={colors.primary} size={16} />
+        ) : (
+          <CheckCircle2 color="#fff" size={16} />
+        )}
+        <Text style={{ color: item.resolved ? colors.primary : '#fff', fontSize: 12, fontWeight: '800' }}>
+          {updating ? '更新中' : item.resolved ? '重新打开' : '标记为已解除'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function SystemLogRow({ item }: { item: OpsSystemLog }) {
   const tone = severityStyle(item.level);
   const requestId = item.request_id || item.client_request_id;
@@ -211,6 +278,24 @@ async function confirmResolve() {
   });
 }
 
+async function confirmRequestErrorUpdate(resolved: boolean) {
+  const title = resolved ? '解除请求错误' : '重新打开请求错误';
+  const message = resolved
+    ? '确认将该请求错误标记为已解除？原始错误记录仍会保留。'
+    : '确认将该请求错误重新标记为待处理？';
+
+  if (Platform.OS === 'web') {
+    return typeof window !== 'undefined' ? window.confirm(message) : false;
+  }
+
+  return new Promise<boolean>((resolve) => {
+    Alert.alert(title, message, [
+      { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+      { text: '确认', onPress: () => resolve(true) },
+    ]);
+  });
+}
+
 export default function OpsScreen() {
   const config = useSnapshot(adminConfigState);
   const hasSession = hasAuthenticatedAdminSession(config);
@@ -218,10 +303,15 @@ export default function OpsScreen() {
   const [mode, setMode] = useState<OpsMode>('alerts');
   const [alertStatus, setAlertStatus] = useState<AlertStatusFilter>('firing');
   const [alertSeverity, setAlertSeverity] = useState<AlertSeverityFilter>('all');
+  const [errorStatus, setErrorStatus] = useState<ErrorStatusFilter>('unresolved');
+  const [errorTimeRange, setErrorTimeRange] = useState<ErrorTimeRange>('24h');
+  const [errorSearch, setErrorSearch] = useState('');
   const [logLevel, setLogLevel] = useState<LogLevelFilter>('all');
   const [logTimeRange, setLogTimeRange] = useState<LogTimeRange>('24h');
   const [logSearch, setLogSearch] = useState('');
-  const [actionMessage, setActionMessage] = useState('');
+  const [alertActionMessage, setAlertActionMessage] = useState('');
+  const [errorActionMessage, setErrorActionMessage] = useState('');
+  const debouncedErrorSearch = useDebouncedValue(errorSearch, 300);
   const debouncedLogSearch = useDebouncedValue(logSearch, 300);
 
   const alertsQuery = useInfiniteQuery({
@@ -239,6 +329,23 @@ export default function OpsScreen() {
       return lastPage.length === PAGE_SIZE && last ? { firedAt: last.fired_at, id: last.id } : undefined;
     },
     enabled: hasSession && mode === 'alerts',
+  });
+
+  const requestErrorsQuery = useInfiniteQuery({
+    queryKey: ['ops', serverScope, 'request-errors', errorTimeRange, errorStatus, debouncedErrorSearch],
+    queryFn: ({ pageParam }) => listRequestErrors({
+      page: pageParam,
+      page_size: PAGE_SIZE,
+      time_range: errorTimeRange,
+      resolved: errorStatus === 'all' ? undefined : errorStatus === 'resolved' ? 'true' : 'false',
+      view: 'errors',
+      q: debouncedErrorSearch.trim() || undefined,
+      sort_by: 'created_at',
+      sort_order: 'desc',
+    }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.page < lastPage.pages ? lastPage.page + 1 : undefined,
+    enabled: hasSession && mode === 'errors',
   });
 
   const logsQuery = useInfiniteQuery({
@@ -265,21 +372,39 @@ export default function OpsScreen() {
   const resolveMutation = useMutation({
     mutationFn: (id: number) => updateAlertEventStatus(id, 'manual_resolved'),
     onSuccess: async () => {
-      setActionMessage('告警已标记为解除。');
+      setAlertActionMessage('告警已标记为解除。');
       await queryClient.invalidateQueries({ queryKey: ['ops', serverScope, 'alert-events'] });
     },
-    onError: (error) => setActionMessage(getOpsErrorMessage(error)),
+    onError: (error) => setAlertActionMessage(getOpsErrorMessage(error)),
+  });
+
+  const errorResolutionMutation = useMutation({
+    mutationFn: ({ id, resolved }: { id: number; resolved: boolean }) => updateRequestErrorResolved(id, resolved),
+    onSuccess: async (_, variables) => {
+      setErrorActionMessage(variables.resolved ? '请求错误已标记为解除。' : '请求错误已重新打开。');
+      await queryClient.invalidateQueries({ queryKey: ['ops', serverScope, 'request-errors'] });
+    },
+    onError: (error) => setErrorActionMessage(getOpsErrorMessage(error)),
   });
 
   const alerts = useMemo(() => alertsQuery.data?.pages.flat() ?? [], [alertsQuery.data]);
+  const requestErrors = useMemo(() => requestErrorsQuery.data?.pages.flatMap((page) => page.items) ?? [], [requestErrorsQuery.data]);
   const logs = useMemo(() => logsQuery.data?.pages.flatMap((page) => page.items) ?? [], [logsQuery.data]);
 
   async function handleResolve(id: number) {
-    setActionMessage('');
+    setAlertActionMessage('');
     if (await confirmResolve()) resolveMutation.mutate(id);
   }
 
-  const activeQuery = mode === 'alerts' ? alertsQuery : logsQuery;
+  async function handleRequestErrorUpdate(item: OpsErrorLog) {
+    const resolved = !item.resolved;
+    setErrorActionMessage('');
+    if (await confirmRequestErrorUpdate(resolved)) {
+      errorResolutionMutation.mutate({ id: item.id, resolved });
+    }
+  }
+
+  const activeQuery = mode === 'alerts' ? alertsQuery : mode === 'errors' ? requestErrorsQuery : logsQuery;
   const isInitialLoading = activeQuery.isLoading;
 
   return (
@@ -287,12 +412,13 @@ export default function OpsScreen() {
       <View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 14 }}>
         <View style={{ marginBottom: 12 }}>
           <Text style={{ color: colors.text, fontSize: 26, fontWeight: '800' }}>运维</Text>
-          <Text style={{ color: colors.subtext, fontSize: 12, marginTop: 4 }}>查看告警状态与服务器运行日志。</Text>
+          <Text style={{ color: colors.subtext, fontSize: 12, marginTop: 4 }}>查看告警、请求错误与服务器运行日志。</Text>
         </View>
 
         <View style={{ height: 42, flexDirection: 'row', padding: 4, borderRadius: 8, backgroundColor: colors.muted, marginBottom: 10 }}>
           {([
             { value: 'alerts' as const, label: '告警', icon: BellRing },
+            { value: 'errors' as const, label: '请求错误', icon: Bug },
             { value: 'logs' as const, label: '日志', icon: FileText },
           ]).map((option) => {
             const selected = mode === option.value;
@@ -320,7 +446,7 @@ export default function OpsScreen() {
                 options={[{ value: 'all', label: '全部级别' }, { value: 'critical', label: '严重' }, { value: 'error', label: '错误' }, { value: 'warning', label: '警告' }, { value: 'info', label: '提示' }]}
               />
             </View>
-            {actionMessage ? <Text style={{ marginBottom: 8, padding: 10, borderRadius: 8, backgroundColor: actionMessage.includes('已标记') ? '#e6f4ee' : colors.dangerBg, color: actionMessage.includes('已标记') ? colors.primary : colors.danger, fontSize: 12 }}>{actionMessage}</Text> : null}
+            {alertActionMessage ? <Text style={{ marginBottom: 8, padding: 10, borderRadius: 8, backgroundColor: alertActionMessage.includes('已标记') ? '#e6f4ee' : colors.dangerBg, color: alertActionMessage.includes('已标记') ? colors.primary : colors.danger, fontSize: 12 }}>{alertActionMessage}</Text> : null}
             {isInitialLoading ? (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.primary} /></View>
             ) : (
@@ -334,6 +460,59 @@ export default function OpsScreen() {
                 refreshControl={<RefreshControl refreshing={alertsQuery.isRefetching && !alertsQuery.isFetchingNextPage} onRefresh={() => void alertsQuery.refetch()} tintColor={colors.primary} />}
                 ListEmptyComponent={<EmptyOrError error={alertsQuery.error} label="当前筛选条件下没有告警" onRetry={() => void alertsQuery.refetch()} />}
                 ListFooterComponent={<LoadMore visible={alertsQuery.hasNextPage} loading={alertsQuery.isFetchingNextPage} onPress={() => void alertsQuery.fetchNextPage()} />}
+              />
+            )}
+          </>
+        ) : mode === 'errors' ? (
+          <>
+            <View style={{ height: 42, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 8, backgroundColor: colors.surface, paddingHorizontal: 12, marginBottom: 8 }}>
+              <Search color="#81786d" size={16} />
+              <TextInput
+                value={errorSearch}
+                onChangeText={setErrorSearch}
+                placeholder="搜索错误、模型或请求 ID"
+                placeholderTextColor="#968c7e"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={{ flex: 1, color: colors.text, fontSize: 13 }}
+              />
+            </View>
+            <View style={{ gap: 8, marginBottom: 9 }}>
+              <FilterPills
+                value={errorTimeRange}
+                onChange={setErrorTimeRange}
+                options={[{ value: '1h', label: '1 小时' }, { value: '24h', label: '24 小时' }, { value: '7d', label: '7 天' }]}
+              />
+              <FilterPills
+                value={errorStatus}
+                onChange={setErrorStatus}
+                options={[{ value: 'unresolved', label: '待处理' }, { value: 'resolved', label: '已解除' }, { value: 'all', label: '全部状态' }]}
+              />
+            </View>
+            {errorActionMessage ? (
+              <Text style={{ marginBottom: 8, padding: 10, borderRadius: 8, backgroundColor: errorActionMessage.includes('已') ? '#e6f4ee' : colors.dangerBg, color: errorActionMessage.includes('已') ? colors.primary : colors.danger, fontSize: 12 }}>
+                {errorActionMessage}
+              </Text>
+            ) : null}
+            {isInitialLoading ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.primary} /></View>
+            ) : (
+              <FlatList
+                data={requestErrors}
+                keyExtractor={(item) => String(item.id)}
+                renderItem={({ item }) => (
+                  <RequestErrorRow
+                    item={item}
+                    updating={errorResolutionMutation.isPending && errorResolutionMutation.variables?.id === item.id}
+                    onToggleResolved={() => void handleRequestErrorUpdate(item)}
+                  />
+                )}
+                ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 104, flexGrow: requestErrors.length === 0 ? 1 : 0 }}
+                refreshControl={<RefreshControl refreshing={requestErrorsQuery.isRefetching && !requestErrorsQuery.isFetchingNextPage} onRefresh={() => void requestErrorsQuery.refetch()} tintColor={colors.primary} />}
+                ListEmptyComponent={<EmptyOrError error={requestErrorsQuery.error} label="当前筛选条件下没有请求错误" onRetry={() => void requestErrorsQuery.refetch()} />}
+                ListFooterComponent={<LoadMore visible={requestErrorsQuery.hasNextPage} loading={requestErrorsQuery.isFetchingNextPage} onPress={() => void requestErrorsQuery.fetchNextPage()} />}
               />
             )}
           </>

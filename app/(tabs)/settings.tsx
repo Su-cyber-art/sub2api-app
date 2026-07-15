@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ExternalLink, PackageCheck, RefreshCw } from 'lucide-react-native';
+import { ExternalLink, FolderKanban, KeyRound, PackageCheck, RefreshCw } from 'lucide-react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -269,6 +269,31 @@ export default function SettingsScreen() {
                   <Text style={{ color: '#514a42', fontSize: 12, fontWeight: '800' }}>发布说明</Text>
                 </Pressable>
               ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {config.baseUrl.trim() && config.adminApiKey.trim() ? (
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 14, gap: 10 }}>
+            <View>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '800' }}>管理入口</Text>
+              <Text style={{ color: colors.subtext, fontSize: 11, marginTop: 3 }}>管理上游账号与路由分组</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 9 }}>
+              <Pressable
+                onPress={() => router.push('/accounts/overview')}
+                style={{ minHeight: 46, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 8, backgroundColor: colors.mutedCard }}
+              >
+                <KeyRound color={colors.primary} size={17} />
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800' }}>账号清单</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/groups')}
+                style={{ minHeight: 46, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 8, backgroundColor: colors.mutedCard }}
+              >
+                <FolderKanban color={colors.primary} size={17} />
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: '800' }}>分组管理</Text>
+              </Pressable>
             </View>
           </View>
         ) : null}
